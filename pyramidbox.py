@@ -7,7 +7,7 @@ import torch.nn.init as init
 
 
 class Pyramidbox(nn.Module):
-    def __init__(self, parse, base, extra_layers, predict_module, head_module, size, device):
+    def __init__(self, parse, base, extra_layers, predict_module, head_module, size, device, do_bn):
         super(Pyramidbox, self).__init__()
         self.parse = parse
         self.vgg = nn.ModuleList(base)
@@ -21,6 +21,12 @@ class Pyramidbox(nn.Module):
         self.size = size
         self.device = device
         self.priors = pyramidAnchors(self.size)
+        self.do_bn = do_bn
+
+        if self.do_bn:
+            self.input_bn = nn.BatchNorm2d(3,  momentum=0.5)
+            self.bn = nn.BatchNorm2d(512,  momentum=0.5)
+            
 
         if parse=='test':
             self.softmax = nn.Softmax(dim=-1)
@@ -31,6 +37,9 @@ class Pyramidbox(nn.Module):
         predict_face = []
         predict_head = []
         predict_body = []
+
+        if self.do_bn:
+            x = self.input_bn(x)
 
         for k in range(16):
             x = self.vgg[k](x)
@@ -84,6 +93,8 @@ class Pyramidbox(nn.Module):
 
         for (x, p0, p1, p2, h1, h2, h3) in zip(fpns, self.predict_0, self.predict_1, self.predict_2, self.face_head, self.head_head, self.body_head):
             concat = torch.cat((p0(x), p1(x), p2(x)), 1)
+            if self.do_bn:
+                concat = self.bn(concat)
             predict_face.append(h1(concat).permute(0, 2, 3, 1).contiguous())
             predict_head.append(h2(concat).permute(0, 2, 3, 1).contiguous())
             predict_body.append(h3(concat).permute(0, 2, 3, 1).contiguous())
@@ -202,7 +213,7 @@ mbox_cfg = [1024, 256, 256, 1024, 256, 128, 1024, 256, 128]
 def build_pyramidbox(parse, size, device):
     base, extra, predict_module, head_module = multibox(vgg(base_cfg, 3), extra_layers(extra_cfg, 1024), mbox_cfg)
 
-    return Pyramidbox(parse, base, extra, predict_module, head_module, size, device)
+    return Pyramidbox(parse, base, extra, predict_module, head_module, size, device, True)
 
 def xavier(param):
     init.xavier_uniform_(param)

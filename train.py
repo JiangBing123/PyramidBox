@@ -36,7 +36,7 @@ def train(args, model, device, train_loader, optimizer, criterion, epoch):
                 100. * batch_idx / len(train_loader), loss.item()))
 
 
-def test(args, model, device, test_loader):
+def tst(args, model, device, test_loader):
     model.eval()
     test_loss = 0
     correct = 0
@@ -130,7 +130,7 @@ def main():
         torch.save(model.state_dict(), 'weights/Pyramidbox_widerface_' +
                    repr(epoch) + '.pth')
 
-    test(args, model, device, val_loader)
+    tst(args, model, device, val_loader)
 
 
 def xavier(param):
