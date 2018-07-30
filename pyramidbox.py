@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import pyramidAnchors
 import torch.nn.init as init
-
+from detection import *
 
 
 class Pyramidbox(nn.Module):
@@ -15,13 +15,17 @@ class Pyramidbox(nn.Module):
         self.predict_0 = nn.ModuleList(predict_module[0])
         self.predict_1 = nn.ModuleList(predict_module[1])
         self.predict_2 = nn.ModuleList(predict_module[2])
-        self.face_head = nn.ModuleList(head_module[0])
-        self.head_head = nn.ModuleList(head_module[1])
-        self.body_head = nn.ModuleList(head_module[2])
+        self.face_head_conf = nn.ModuleList(head_module[0])
+        self.face_head_loc = nn.ModuleList(head_module[1])
+        self.head_head_conf = nn.ModuleList(head_module[2])
+        self.head_head_loc = nn.ModuleList(head_module[3])
+        self.body_head_conf = nn.ModuleList(head_module[4])
+        self.body_head_loc = nn.ModuleList(head_module[5])
         self.size = size
         self.device = device
         self.priors = pyramidAnchors(self.size)
         self.do_bn = do_bn
+        self.detect = Detect(num_classes=1, top_k=200, confidence_thred=0.01, nms_thred=0.45, device=self.device)
 
         if self.do_bn:
             self.input_bn = nn.BatchNorm2d(3,  momentum=0.5)
@@ -34,9 +38,12 @@ class Pyramidbox(nn.Module):
     def forward(self, x):
         source = []
         fpns = []
-        predict_face = []
-        predict_head = []
-        predict_body = []
+        predict_face_conf = []
+        predict_head_conf = []
+        predict_body_conf = []
+        predict_face_loc = []
+        predict_head_loc = []
+        predict_body_loc = []
 
         if self.do_bn:
             x = self.input_bn(x)
@@ -91,24 +98,39 @@ class Pyramidbox(nn.Module):
                 fpns.append(x)
 
 
-        for (x, p0, p1, p2, h1, h2, h3) in zip(fpns, self.predict_0, self.predict_1, self.predict_2, self.face_head, self.head_head, self.body_head):
+        for (x, p0, p1, p2, h1, h2, h3, h4, h5, h6) in zip(fpns, self.predict_0, self.predict_1, self.predict_2,
+                                                           self.face_head_conf, self.face_head_loc,
+                                                           self.head_head_conf, self.head_head_loc,
+                                                           self.body_head_conf, self.body_head_loc):
             concat = torch.cat((p0(x), p1(x), p2(x)), 1)
             if self.do_bn:
                 concat = self.bn(concat)
-            predict_face.append(h1(concat).permute(0, 2, 3, 1).contiguous())
-            predict_head.append(h2(concat).permute(0, 2, 3, 1).contiguous())
-            predict_body.append(h3(concat).permute(0, 2, 3, 1).contiguous())
-        face = torch.cat([o.view(o.size(0), -1) for o in predict_face], 1)
-        head = torch.cat([o.view(o.size(0), -1) for o in predict_head], 1)
-        body = torch.cat([o.view(o.size(0), -1) for o in predict_body], 1)
+            predict_face_conf.append(h1(concat).permute(0, 2, 3, 1).contiguous())
+            predict_face_loc.append(h2(concat).permute(0, 2, 3, 1).contiguous())
+            predict_head_conf.append(h3(concat).permute(0, 2, 3, 1).contiguous())
+            predict_head_loc.append(h4(concat).permute(0, 2, 3, 1).contiguous())
+            predict_body_conf.append(h5(concat).permute(0, 2, 3, 1).contiguous())
+            predict_body_loc.append(h6(concat).permute(0, 2, 3, 1).contiguous())
+        face_conf = torch.cat([o.view(o.size(0), -1) for o in predict_face_conf], 1)
+        head_conf = torch.cat([o.view(o.size(0), -1) for o in predict_head_conf], 1)
+        body_conf = torch.cat([o.view(o.size(0), -1) for o in predict_body_conf], 1)
+        face_loc = torch.cat([o.view(o.size(0), -1) for o in predict_face_loc], 1)
+        head_loc = torch.cat([o.view(o.size(0), -1) for o in predict_head_loc], 1)
+        body_loc = torch.cat([o.view(o.size(0), -1) for o in predict_body_loc], 1)
 
         if self.parse == 'test':
-            output = 0
+            output = self.detect(
+                face_conf.view(face_conf.size(0), -1, 4),
+                face_loc.view(face_loc.size(0), -1, 4)
+            )
         else:
             output = (
-                face.view(face.size(0), -1, 8),
-                head.view(head.size(0), -1, 6),
-                body.view(body.size(0), -1, 6),
+                face_conf.view(face_conf.size(0), -1, 4),
+                face_loc.view(face_loc.size(0), -1, 4),
+                head_conf.view(head_conf.size(0), -1, 2),
+                head_loc.view(head_loc.size(0), -1, 4),
+                body_conf.view(body_conf.size(0), -1, 2),
+                body_loc.view(body_loc.size(0), -1, 4),
                 self.priors
             )
 
@@ -192,16 +214,22 @@ def multibox(vgg, extra_layers, cfg):
         p2.append(layers2)
         p3.append(layers3)
 
-    face_head = []
-    head_head = []
-    body_head = []
+    face_head_conf = []
+    face_head_loc = []
+    head_head_conf = []
+    head_head_loc = []
+    body_head_conf = []
+    body_head_loc = []
 
     for i in range(6):
-        face_head += [nn.Conv2d(512, 8, kernel_size=3, padding=1)]
-        head_head += [nn.Conv2d(512, 6, kernel_size=3, padding=1)]
-        body_head += [nn.Conv2d(512, 6, kernel_size=3, padding=1)]
+        face_head_conf += [nn.Conv2d(512, 4, kernel_size=3, padding=1)]
+        face_head_loc += [nn.Conv2d(512, 4, kernel_size=3, padding=1)]
+        head_head_conf += [nn.Conv2d(512, 2, kernel_size=3, padding=1)]
+        head_head_loc += [nn.Conv2d(512, 4, kernel_size=3, padding=1)]
+        body_head_conf += [nn.Conv2d(512, 2, kernel_size=3, padding=1)]
+        body_head_loc += [nn.Conv2d(512, 4, kernel_size=3, padding=1)]
 
-    return vgg, extra_layers, (p1, p2, p3), (face_head, head_head, body_head)
+    return vgg, extra_layers, (p1, p2, p3), (face_head_conf, face_head_loc, head_head_conf, head_head_loc, body_head_conf, body_head_loc)
 
 
 base_cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512]

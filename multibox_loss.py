@@ -17,23 +17,17 @@ class MultiBoxLoss(nn.Module):
         self.negpos_ratio = 3
 
     def forward(self, predictions, targets):
-        face_data, head_data, body_data, priors = predictions
-        if np.any(np.isnan(face_data.cpu().detach().numpy())):
+        face_data_conf, face_locdata, head_confdata, head_locdata, body_confdata, body_locdata, priors = predictions
+        if np.any(np.isnan(face_data_conf.cpu().detach().numpy())):
             print("detection is nan")
 
-        face_confdata_0, _ = torch.max(face_data[:, :, 0:3], dim=2, keepdim=True)
-        face_confdata_1 = face_data[:, :, 3:4]
+        face_confdata_0, _ = torch.max(face_data_conf[:, :, 0:3], dim=2, keepdim=True)
+        face_confdata_1 = face_data_conf[:, :, 3:4]
         face_confdata = torch.cat((face_confdata_0, face_confdata_1), dim=2)
 
-        head_confdata = head_data[:, :, 0:2]
-        body_confdata = body_data[:, :, 0:2]     # [n, prior_num, 2]
 
-        face_locdata = face_data[:, :, 4:8]       # [n, prior_num, 4]
-        head_locdata = head_data[:, :, 2:6]
-        body_locdata = body_data[:, :, 2:6]
-
-        num = face_data.size(0)
-        num_priors = face_data.size(1)
+        num = face_data_conf.size(0)
+        num_priors = face_data_conf.size(1)
 
         # Match priors(default boxes) and ground truth
         face_conf_t, face_loc_t = self.match_priors(0, num, num_priors, targets, priors)
@@ -83,9 +77,9 @@ class MultiBoxLoss(nn.Module):
         loss_l = (fface*face_loss_l)/(N_face+e) + (fhead*head_loss_l)/(N_head+e) + (fbody*body_loss_l)/(N_body+e)
         loss_c = (fface*face_loss_c)/(N_face+e) + (fhead*head_loss_c)/(N_head+e) + (fbody*body_loss_c)/(N_body+e)
 
-        print(loss_l, loss_c)
+        print(10*loss_l, loss_c)
 
-        return loss_c + loss_l
+        return loss_c + 10*loss_l
 
     def match_priors(self, k, num, num_priors, targets, priors):
         conf_t = torch.Tensor(num, num_priors)
