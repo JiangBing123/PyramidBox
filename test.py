@@ -40,7 +40,8 @@ def tst_net(save_folder, net, device, transform=None, thresh=0.9):
             score = detections[0,j,0]
             print(score)
             pt = detections[0, j, 1:].cpu().detach().numpy()
-            coords = (int(pt[0]-pt[2]/2), int(pt[1]-pt[3]/2), int(pt[0]+pt[2]/2), int(pt[0]+pt[3]/2))
+            print(pt)
+            coords = (int(pt[0]), int(pt[1]), int(pt[2]), int(pt[3]))
             cv2.rectangle(image, (coords[0], coords[1]), (coords[2], coords[3]), (0,255,0), 4)
             j = j+1
             if j==detections.size()[1]:
@@ -51,7 +52,7 @@ def main():
 
     # testing settings
     parser = argparse.ArgumentParser(description='PyramidBox Face Detection')
-    parser.add_argument('--trained_model', default='weights/Pyramidbox_widerface_1.pth',
+    parser.add_argument('--trained_model', default='weights/Pyramidbox_widerface_4.pth',
                         type=str, help='Trained state_dict file path to open')
     parser.add_argument('--save_folder', default='eval/', type=str,
                         help='Dir to save results')

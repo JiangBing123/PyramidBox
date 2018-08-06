@@ -34,8 +34,6 @@ class Detect(Function):
             c_mask = conf_scores[0].gt(self.confidence_thred)
             scores = conf_scores[0][c_mask]
 
-            scores, ind = torch.sort(scores, dim=0, descending=True)
-            print(scores.size(), scores)
             if scores.dim() == 0:
                 continue
 

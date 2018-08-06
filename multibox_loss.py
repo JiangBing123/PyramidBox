@@ -17,7 +17,7 @@ class MultiBoxLoss(nn.Module):
         self.negpos_ratio = 3
 
     def forward(self, predictions, targets):
-        face_data_conf, face_locdata, head_confdata, head_locdata, body_confdata, body_locdata, priors = predictions
+        face_data_conf, face_locdata, priors = predictions   #  head_confdata, head_locdata, body_confdata, body_locdata,
         if np.any(np.isnan(face_data_conf.cpu().detach().numpy())):
             print("detection is nan")
 
@@ -31,55 +31,56 @@ class MultiBoxLoss(nn.Module):
 
         # Match priors(default boxes) and ground truth
         face_conf_t, face_loc_t = self.match_priors(0, num, num_priors, targets, priors)
-        head_conf_t, head_loc_t = self.match_priors(1, num, num_priors, targets, priors)
-        body_conf_t, body_loc_t = self.match_priors(2, num, num_priors, targets, priors)
+        # head_conf_t, head_loc_t = self.match_priors(1, num, num_priors, targets, priors)
+        # body_conf_t, body_loc_t = self.match_priors(2, num, num_priors, targets, priors)
 
         face_pos = face_conf_t > 0
         face_neg = face_conf_t <= 0
         face_posnum = face_pos.sum(dim=1, keepdim=True)
 
-        head_pos = head_conf_t > 0
-        head_neg = head_conf_t <= 0
-        head_posnum = head_pos.sum(dim=1, keepdim=True)
-
-        body_pos = body_conf_t > 0
-        body_neg = body_conf_t <= 0
-        body_posnum = body_pos.sum(dim=1, keepdim=True)
+        # head_pos = head_conf_t > 0
+        # head_neg = head_conf_t <= 0
+        # head_posnum = head_pos.sum(dim=1, keepdim=True)
+        #
+        # body_pos = body_conf_t > 0
+        # body_neg = body_conf_t <= 0
+        # body_posnum = body_pos.sum(dim=1, keepdim=True)
 
         # Localization Loss  (Smooth L1)
         face_loss_l = loc_loss(face_pos, face_locdata, face_loc_t)
-        head_loss_l = loc_loss(head_pos, head_locdata, head_loc_t)
-        body_loss_l = loc_loss(body_pos, body_locdata, body_loc_t)
+        # head_loss_l = loc_loss(head_pos, head_locdata, head_loc_t)
+        # body_loss_l = loc_loss(body_pos, body_locdata, body_loc_t)
 
 
         # Hard example mining
         face_neg = self.hard_mining(face_confdata, face_conf_t, face_pos, num)
-        head_neg = self.hard_mining(head_confdata, head_conf_t, head_pos, num)
-        body_neg = self.hard_mining(body_confdata, body_conf_t, body_pos, num)
+        # head_neg = self.hard_mining(head_confdata, head_conf_t, head_pos, num)
+        # body_neg = self.hard_mining(body_confdata, body_conf_t, body_pos, num)
 
         # Confidence Loss for both pos and neg examples
         face_loss_c = self.conf_loss(face_pos, face_neg, face_confdata, face_conf_t)
-        head_loss_c = self.conf_loss(head_pos, head_neg, head_confdata, head_conf_t)
-        body_loss_c = self.conf_loss(body_pos, body_neg, body_confdata, body_conf_t)
+        # head_loss_c = self.conf_loss(head_pos, head_neg, head_confdata, head_conf_t)
+        # body_loss_c = self.conf_loss(body_pos, body_neg, body_confdata, body_conf_t)
 
         # Sum the loss
         N_face = face_posnum.sum().item()
-        N_head = head_posnum.sum().item()
-        N_body = body_posnum.sum().item()
+
+        # N_head = head_posnum.sum().item()
+        # N_body = body_posnum.sum().item()
 
 
         fface = min(1, N_face)
-        fhead = min(1, N_head)
-        fbody = min(1, N_body)
+        # fhead = min(1, N_head)
+        # fbody = min(1, N_body)
 
         e = 1e-12
 
-        loss_l = (fface*face_loss_l)/(N_face+e) + (fhead*head_loss_l)/(N_head+e) + (fbody*body_loss_l)/(N_body+e)
-        loss_c = (fface*face_loss_c)/(N_face+e) + (fhead*head_loss_c)/(N_head+e) + (fbody*body_loss_c)/(N_body+e)
+        loss_l = (fface*face_loss_l)/(N_face+e)   # (fface*face_loss_l)/(N_face+e) + (fhead*head_loss_l)/(N_head+e) + (fbody*body_loss_l)/(N_body+e)
+        loss_c = (fface*face_loss_c)/(N_face+e)  # (fface*face_loss_c)/(N_face+e) + (fhead*head_loss_c)/(N_head+e) + (fbody*body_loss_c)/(N_body+e)
 
-        print(10*loss_l, loss_c)
+        print(loss_l, loss_c)
 
-        return loss_c + 10*loss_l
+        return loss_c + loss_l
 
     def match_priors(self, k, num, num_priors, targets, priors):
         conf_t = torch.Tensor(num, num_priors)
@@ -103,7 +104,7 @@ class MultiBoxLoss(nn.Module):
         if conf_p.dim() == 1:
             loss_c = 0.0
         else:
-            loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False).float()
+            loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False) # .float()
 
         return loss_c
 

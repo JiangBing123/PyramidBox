@@ -17,10 +17,10 @@ class Pyramidbox(nn.Module):
         self.predict_2 = nn.ModuleList(predict_module[2])
         self.face_head_conf = nn.ModuleList(head_module[0])
         self.face_head_loc = nn.ModuleList(head_module[1])
-        self.head_head_conf = nn.ModuleList(head_module[2])
-        self.head_head_loc = nn.ModuleList(head_module[3])
-        self.body_head_conf = nn.ModuleList(head_module[4])
-        self.body_head_loc = nn.ModuleList(head_module[5])
+        # self.head_head_conf = nn.ModuleList(head_module[2])
+        # self.head_head_loc = nn.ModuleList(head_module[3])
+        # self.body_head_conf = nn.ModuleList(head_module[4])
+        # self.body_head_loc = nn.ModuleList(head_module[5])
         self.size = size
         self.device = device
         self.priors = pyramidAnchors(self.size)
@@ -45,8 +45,8 @@ class Pyramidbox(nn.Module):
         predict_head_loc = []
         predict_body_loc = []
 
-        if self.do_bn:
-            x = self.input_bn(x)
+        #if self.do_bn:
+        #    x = self.input_bn(x)
 
         for k in range(16):
             x = self.vgg[k](x)
@@ -98,25 +98,23 @@ class Pyramidbox(nn.Module):
                 fpns.append(x)
 
 
-        for (x, p0, p1, p2, h1, h2, h3, h4, h5, h6) in zip(fpns, self.predict_0, self.predict_1, self.predict_2,
-                                                           self.face_head_conf, self.face_head_loc,
-                                                           self.head_head_conf, self.head_head_loc,
-                                                           self.body_head_conf, self.body_head_loc):
+        for (x, p0, p1, p2, h1, h2) in zip(fpns, self.predict_0, self.predict_1, self.predict_2,     # , h3, h4, h5, h6
+                                                           self.face_head_conf, self.face_head_loc):  # ,self.head_head_conf, self.head_head_loc,self.body_head_conf, self.body_head_loc
             concat = torch.cat((p0(x), p1(x), p2(x)), 1)
             if self.do_bn:
                 concat = self.bn(concat)
             predict_face_conf.append(h1(concat).permute(0, 2, 3, 1).contiguous())
             predict_face_loc.append(h2(concat).permute(0, 2, 3, 1).contiguous())
-            predict_head_conf.append(h3(concat).permute(0, 2, 3, 1).contiguous())
-            predict_head_loc.append(h4(concat).permute(0, 2, 3, 1).contiguous())
-            predict_body_conf.append(h5(concat).permute(0, 2, 3, 1).contiguous())
-            predict_body_loc.append(h6(concat).permute(0, 2, 3, 1).contiguous())
+            # predict_head_conf.append(h3(concat).permute(0, 2, 3, 1).contiguous())
+            # predict_head_loc.append(h4(concat).permute(0, 2, 3, 1).contiguous())
+            # predict_body_conf.append(h5(concat).permute(0, 2, 3, 1).contiguous())
+            # predict_body_loc.append(h6(concat).permute(0, 2, 3, 1).contiguous())
         face_conf = torch.cat([o.view(o.size(0), -1) for o in predict_face_conf], 1)
-        head_conf = torch.cat([o.view(o.size(0), -1) for o in predict_head_conf], 1)
-        body_conf = torch.cat([o.view(o.size(0), -1) for o in predict_body_conf], 1)
+        # head_conf = torch.cat([o.view(o.size(0), -1) for o in predict_head_conf], 1)
+        # body_conf = torch.cat([o.view(o.size(0), -1) for o in predict_body_conf], 1)
         face_loc = torch.cat([o.view(o.size(0), -1) for o in predict_face_loc], 1)
-        head_loc = torch.cat([o.view(o.size(0), -1) for o in predict_head_loc], 1)
-        body_loc = torch.cat([o.view(o.size(0), -1) for o in predict_body_loc], 1)
+        # head_loc = torch.cat([o.view(o.size(0), -1) for o in predict_head_loc], 1)
+        # body_loc = torch.cat([o.view(o.size(0), -1) for o in predict_body_loc], 1)
 
         if self.parse == 'test':
             output = self.detect(
@@ -127,10 +125,10 @@ class Pyramidbox(nn.Module):
             output = (
                 face_conf.view(face_conf.size(0), -1, 4),
                 face_loc.view(face_loc.size(0), -1, 4),
-                head_conf.view(head_conf.size(0), -1, 2),
-                head_loc.view(head_loc.size(0), -1, 4),
-                body_conf.view(body_conf.size(0), -1, 2),
-                body_loc.view(body_loc.size(0), -1, 4),
+                # head_conf.view(head_conf.size(0), -1, 2),
+                # head_loc.view(head_loc.size(0), -1, 4),
+                # body_conf.view(body_conf.size(0), -1, 2),
+                # body_loc.view(body_loc.size(0), -1, 4),
                 self.priors
             )
 
@@ -229,7 +227,7 @@ def multibox(vgg, extra_layers, cfg):
         body_head_conf += [nn.Conv2d(512, 2, kernel_size=3, padding=1)]
         body_head_loc += [nn.Conv2d(512, 4, kernel_size=3, padding=1)]
 
-    return vgg, extra_layers, (p1, p2, p3), (face_head_conf, face_head_loc, head_head_conf, head_head_loc, body_head_conf, body_head_loc)
+    return vgg, extra_layers, (p1, p2, p3), (face_head_conf, face_head_loc)  # , head_head_conf, head_head_loc, body_head_conf, body_head_loc
 
 
 base_cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512]

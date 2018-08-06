@@ -133,7 +133,7 @@ def decode(loc, priors):
     boxes = torch.cat((loc[:, :2]*priors[:, :2]+priors[:, :2],
                        torch.exp(loc[:, 2:])*priors[:, 2:]), 1)
 
-    return boxes
+    return point_form(boxes)
 
 
 def log_sum_exp(x):

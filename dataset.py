@@ -11,7 +11,7 @@ root_val = '/home/vrlab/Downloads/pyramidbox/data/WIDER_val/images/'
 
 
 def default_loader(path):
-    return Image.open(path).convert('RGB').resize((640, 640))
+    return Image.open(path).convert('RGB')
 
 class MyDataset(Dataset):
     def __init__(self, parse, txt, transform=None, target_transform=None, loader=default_loader):
@@ -61,6 +61,7 @@ class MyDataset(Dataset):
         fn, label = self.imgs[index]
         img = self.loader(fn)
         w, h = img.size
+        img = img.resize((640, 640))
         if self.transform is not None:
             img = self.transform(img)
         label = resize_label(label, w, h, 640, 640)
