@@ -5,7 +5,7 @@ import torch.nn.functional as F
 def resize_label(labels, w1, h1, w2, h2):
     labs = []
     for label in labels:
-        labs.append(np.array([label[0]*w2/w1, label[1]*h2/h1, label[2]*w2/w1, label[3]*h2/h1]))
+        labs.append(np.array([label[0]*w2/w1, label[1]*h2/h1, label[2]*w2/w1, label[3]*h2/h1, 1]))
     return labs
 
 
@@ -26,7 +26,7 @@ def pyramidAnchors(size):
                 w = float(anchor[k])
                 h = float(anchor[k])
                 prior.append([x, y, w, h])
-        priors.append(prior)
+        priors.extend(prior)
 
     return priors
 
@@ -119,21 +119,26 @@ def match(spa, k, anchor, threshold, targets, priors, conf_t, loc_t, idx, device
 def encode(matched, priors):
 
     # dist b/t match center and prior's center
-    g_cxcy = (matched[:, :2] - priors[:, :2])/priors[:, :2]
-
+    g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]
+    # encode variance
+    g_cxcy /= priors[:, 2:]
     # match wh / prior wh
-    g_wh = torch.log(matched[:, 2:] / priors[:, 2:])
-
+    g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]
+    g_wh = torch.log(g_wh)
     # return target for smooth_l1_loss
     return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4]
 
 
+# Adapted from https://github.com/Hakuyume/chainer-ssd
 def decode(loc, priors):
 
-    boxes = torch.cat((loc[:, :2]*priors[:, :2]+priors[:, :2],
-                       torch.exp(loc[:, 2:])*priors[:, 2:]), 1)
+    boxes = torch.cat((
+        priors[:, :2] + loc[:, :2] * priors[:, 2:],
+        priors[:, 2:] * torch.exp(loc[:, 2:])), 1)
+    boxes[:, :2] -= boxes[:, 2:] / 2
+    boxes[:, 2:] += boxes[:, :2]
+    return boxes
 
-    return point_form(boxes)
 
 
 def log_sum_exp(x):
@@ -220,7 +225,53 @@ def nms(boxes, scores, overlap=0.5, top_k=200):
 
 
 
+def match_temp(threshold, truths, priors, labels, loc_t, conf_t, idx, device):
+    """Match each prior box with the ground truth box of the highest jaccard
+    overlap, encode the bounding boxes, then return the matched indices
+    corresponding to both confidence and location preds.
+    Args:
+        threshold: (float) The overlap threshold used when mathing boxes.
+        truths: (tensor) Ground truth boxes, Shape: [num_obj, num_priors].
+        priors: (tensor) Prior boxes from priorbox layers, Shape: [n_priors,4].
+        variances: (tensor) Variances corresponding to each prior coord,
+            Shape: [num_priors, 4].
+        labels: (tensor) All the class labels for the image, Shape: [num_obj].
+        loc_t: (tensor) Tensor to be filled w/ endcoded location targets.
+        conf_t: (tensor) Tensor to be filled w/ matched indices for conf preds.
+        idx: (int) current batch index
+    Return:
+        The matched indices corresponding to 1)location and 2)confidence preds.
+    """
+    # jaccard index
+    '''
+    overlaps = jaccard(
+        truths,
+        point_form(priors)
+    )
+    '''
 
+    overlaps = jaccard(truths, point_form(torch.Tensor(priors).to(device)))
+
+    # (Bipartite Matching)
+    # [1,num_objects] best prior for each ground truth
+    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)
+    # [1,num_priors] best ground truth for each prior
+    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)
+    best_truth_idx.squeeze_(0)
+    best_truth_overlap.squeeze_(0)
+    best_prior_idx.squeeze_(1)
+    best_prior_overlap.squeeze_(1)
+    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+    # TODO refactor: index  best_prior_idx with long tensor
+    # ensure every gt matches with its prior of max overlap
+    for j in range(best_prior_idx.size(0)):
+        best_truth_idx[best_prior_idx[j]] = j
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4]
+    conf = labels[best_truth_idx]         # Shape: [num_priors]
+    conf[best_truth_overlap < threshold] = 0  # label as background
+    loc = encode(matches, torch.Tensor(priors).to(device))
+    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn
+    conf_t[idx] = conf  # [num_priors] top class label for each prior
 
 
 

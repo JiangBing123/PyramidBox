@@ -44,7 +44,9 @@ class MyDataset(Dataset):
                 continue
             else:
                 line = line.strip().split()
-                labels.append([float(line[0]), float(line[1]), float(line[2]), float(line[3])])
+                labels.append([float(line[0]), float(line[1]), float(line[0])+float(line[2]),
+                               float(line[1])+float(line[3]), float(1)])
+
                 iter = iter+1
                 if iter == count:
                     imgs.append((img_name, np.array(labels)))

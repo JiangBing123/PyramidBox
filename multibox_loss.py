@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from utils import rescale_targets, match, log_sum_exp
+from utils import rescale_targets, match, log_sum_exp, match_temp
 
 
 
@@ -62,6 +62,7 @@ class MultiBoxLoss(nn.Module):
         # head_loss_c = self.conf_loss(head_pos, head_neg, head_confdata, head_conf_t)
         # body_loss_c = self.conf_loss(body_pos, body_neg, body_confdata, body_conf_t)
 
+
         # Sum the loss
         N_face = face_posnum.sum().item()
 
@@ -75,7 +76,7 @@ class MultiBoxLoss(nn.Module):
 
         e = 1e-12
 
-        loss_l = (fface*face_loss_l)/(N_face+e)   # (fface*face_loss_l)/(N_face+e) + (fhead*head_loss_l)/(N_head+e) + (fbody*body_loss_l)/(N_body+e)
+        loss_l = (fface*face_loss_l)/(N_face+e)  # (fface*face_loss_l)/(N_face+e) + (fhead*head_loss_l)/(N_head+e) + (fbody*body_loss_l)/(N_body+e)
         loss_c = (fface*face_loss_c)/(N_face+e)  # (fface*face_loss_c)/(N_face+e) + (fhead*head_loss_c)/(N_head+e) + (fbody*body_loss_c)/(N_body+e)
 
         print(loss_l, loss_c)
@@ -89,7 +90,11 @@ class MultiBoxLoss(nn.Module):
         # rescale_targets(self.spa, k, targets)
 
         for idx in range(num):
-            match(self.spa, k, self.anchor, self.threshold, targets[idx], priors, conf_t, loc_t, idx, self.device)
+            truths = targets[idx][:, :-1]
+            labels = targets[idx][:, -1]
+
+            match_temp(self.threshold, truths, priors, labels, loc_t, conf_t, idx, self.device)
+            # match(self.spa, k, self.anchor, self.threshold, targets[idx], priors, conf_t, loc_t, idx, self.device)
 
         conf_t = conf_t.to(self.device)
         loc_t = loc_t.to(self.device)
@@ -99,12 +104,10 @@ class MultiBoxLoss(nn.Module):
     def conf_loss(self, pos, neg, conf_data, conf_t):
         pos_idx = pos.unsqueeze(2).expand_as(conf_data)
         neg_idx = neg.unsqueeze(2).expand_as(conf_data)
-        conf_p = conf_data[(pos_idx + neg_idx).gt(0)].view(-1, self.num_classes)
-        targets_weighted = conf_t[(pos + neg).gt(0)].long()
-        if conf_p.dim() == 1:
-            loss_c = 0.0
-        else:
-            loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False) # .float()
+        conf_p = conf_data[(pos_idx + neg_idx).gt(0)].view(-1, self.num_classes)   #[(pos_idx + neg_idx).gt(0)]
+        targets_weighted = conf_t[(pos + neg).gt(0)] .long()  #[(pos + neg).gt(0)]
+
+        loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False) # .float()
 
         return loss_c
 

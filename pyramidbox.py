@@ -7,7 +7,7 @@ from detection import *
 
 
 class Pyramidbox(nn.Module):
-    def __init__(self, parse, base, extra_layers, predict_module, head_module, size, device, do_bn):
+    def __init__(self, parse, base, extra_layers, predict_module, head_module, size, device, do_bn=False):
         super(Pyramidbox, self).__init__()
         self.parse = parse
         self.vgg = nn.ModuleList(base)
@@ -25,7 +25,7 @@ class Pyramidbox(nn.Module):
         self.device = device
         self.priors = pyramidAnchors(self.size)
         self.do_bn = do_bn
-        self.detect = Detect(num_classes=1, top_k=200, confidence_thred=0.01, nms_thred=0.45, device=self.device)
+
 
         if self.do_bn:
             self.input_bn = nn.BatchNorm2d(3,  momentum=0.5)
@@ -34,6 +34,7 @@ class Pyramidbox(nn.Module):
 
         if parse=='test':
             self.softmax = nn.Softmax(dim=-1)
+            self.detect = Detect(num_classes=1, top_k=200, confidence_thred=0.01, nms_thred=0.45, device=self.device)
 
     def forward(self, x):
         source = []
@@ -45,8 +46,8 @@ class Pyramidbox(nn.Module):
         predict_head_loc = []
         predict_body_loc = []
 
-        #if self.do_bn:
-        #    x = self.input_bn(x)
+        if self.do_bn:
+            x = self.input_bn(x)
 
         for k in range(16):
             x = self.vgg[k](x)
@@ -97,6 +98,11 @@ class Pyramidbox(nn.Module):
             if k % 2 == 1:
                 fpns.append(x)
 
+        if self.do_bn:
+            fs = [256, 512, 512, 1024, 512, 256]
+            for k, x in enumerate(fpns):
+                bn = nn.BatchNorm2d(fs[k],  momentum=0.5).to(self.device)
+                fpns[k] = bn(x)
 
         for (x, p0, p1, p2, h1, h2) in zip(fpns, self.predict_0, self.predict_1, self.predict_2,     # , h3, h4, h5, h6
                                                            self.face_head_conf, self.face_head_loc):  # ,self.head_head_conf, self.head_head_loc,self.body_head_conf, self.body_head_loc
@@ -175,7 +181,8 @@ def multibox(vgg, extra_layers, cfg):
 
     count = 0
 
-    fs = [vgg[14].out_channels, vgg[21].out_channels, vgg[28].out_channels, 1024, 512, 256]
+    fs = [256, 512, 512, 1024, 512, 256]
+    # print(vgg[14].out_channels, vgg[21].out_channels, vgg[28].out_channels)
     for v in fs:
         in_channels = v
         layers1 = nn.Sequential()

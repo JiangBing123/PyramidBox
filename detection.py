@@ -45,8 +45,6 @@ class Detect(Function):
             output[i, :count] = \
                 torch.cat((scores[ids[:count]].unsqueeze(1),
                            boxes[ids[:count]]), 1)
-
-
         return output
 
 
